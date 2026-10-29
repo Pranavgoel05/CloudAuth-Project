@@ -62,7 +62,14 @@ def send_password_reset_email(to_email: str, reset_url: str) -> None:
     request = urllib.request.Request(
         "https://api.resend.com/emails",
         data=json.dumps(message).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Resend is fronted by edge security; identify this service rather than
+            # urllib's default generic User-Agent, which can be rejected upstream.
+            "User-Agent": "CloudAuth/1.0 (+https://cloudauth-demo.onrender.com)",
+        },
         method="POST",
     )
     try:
@@ -73,10 +80,21 @@ def send_password_reset_email(to_email: str, reset_url: str) -> None:
             import logging
             logging.getLogger(__name__).info("Resend accepted password-reset email request (HTTP %s)", response.status)
     except urllib.error.HTTPError as exc:
+        # Capture only non-secret edge diagnostics. A Cloudflare-generated 403
+        # may never reach Resend, so the Ray ID is useful for provider support.
+        raw_body = exc.read(4096)
         details = _provider_error_message(
-            exc.read(4096), api_key=api_key, sender=sender, recipient=to_email
+            raw_body, api_key=api_key, sender=sender, recipient=to_email
         )
-        raise EmailDeliveryError(f"Resend rejected email request (HTTP {exc.code}; {details})") from None
+        content_type = str(exc.headers.get("Content-Type", "unknown"))[:100]
+        server = str(exc.headers.get("Server", "unknown"))[:100]
+        ray_id = str(exc.headers.get("CF-Ray", exc.headers.get("cf-ray", "")))[:100]
+        diagnostics = f"content-type={content_type}; server={server}"
+        if ray_id:
+            diagnostics += f"; cf-ray={ray_id}"
+        raise EmailDeliveryError(
+            f"Resend rejected email request (HTTP {exc.code}; {details}; {diagnostics})"
+        ) from None
     except urllib.error.URLError as exc:
         reason = exc.reason
         reason_type = type(reason).__name__
