@@ -1,101 +1,207 @@
-# Cloud User Authentication System Using Python — Hardened Demo & Free Hosting
+# Cloud User Authentication System Using Python
 
-This is an academic prototype featuring a FastAPI backend, browser dashboard, Argon2 password hashing, signed JWT access tokens, refresh-token rotation/revocation, TOTP MFA, RBAC, single-use password-reset links, account lockout, rate limiting, database audit logs, and a Moto simulation of selected AWS services.
+A final-year cybersecurity project demonstrating a Python authentication API, browser dashboard, and selected cloud-security concepts. The application uses FastAPI, SQLAlchemy, PostgreSQL (hosted) or SQLite (local), Argon2 password hashing, JWT access tokens, refresh-token rotation/revocation, TOTP multi-factor authentication (MFA), role-based access control (RBAC), temporary account lockout, rate limiting, audit logging, password recovery by email, and simulated AWS services through Moto.
 
-**Not a production identity provider.** Use only demo accounts and data. The simulated AWS services are not a live AWS deployment. For public hosting, use HTTPS provided by the host, a managed PostgreSQL database, private environment variables, a unique admin password, and MFA for the admin account.
+> **Project status:** Academic prototype, not a production identity provider. Use demo accounts and non-sensitive data only. The current AWS KMS, Secrets Manager, IAM, CloudWatch Logs, and S3 integrations are simulated with Moto; they are not live AWS resources.
+
+## Features
+
+- User registration with password-policy validation and Argon2 password hashing.
+- Login, short-lived signed JWT access tokens, and refresh-token rotation/revocation.
+- TOTP MFA compatible with authenticator applications.
+- Role-based access control for `user`, `admin`, and `auditor` roles.
+- Temporary account lockout and endpoint rate limiting.
+- Audit events stored in the application database, with simulated cloud exports.
+- Forgot Password flow using Resend's HTTPS Email API.
+- Password-reset links that expire after 20 minutes, can be used once, and are stored in the database as token hashes.
+- Browser UI for registration, login, profile access, MFA, administrative views, audit events, and password reset.
+- Pytest automated tests, Dockerfile, and GitHub Actions CI workflow.
+
+## Architecture
+
+- **FastAPI / Uvicorn:** HTTP API and application server.
+- **SQLAlchemy:** ORM and database access.
+- **SQLite:** local demonstration database.
+- **PostgreSQL via Supabase:** persistent hosted database.
+- **Argon2:** password hashing and password verification.
+- **JWT:** signed access tokens.
+- **PyOTP:** TOTP MFA generation and verification.
+- **Resend:** password-reset emails sent over HTTPS (not SMTP).
+- **Moto / Boto3:** simulated AWS integrations for the academic demo.
+- **Pytest / HTTPX:** automated tests.
 
 ## Run locally on Windows
 
-1. Install Python 3.11+.
+1. Install Python 3.11 or newer.
 2. Extract the project ZIP.
-3. Double-click `start_windows.bat`.
-4. The script creates `.venv`, installs dependencies, copies `.env.example` to `.env` if needed, and prompts you to create a private administrator if one does not exist.
-5. Open http://127.0.0.1:8000. Keep the terminal running.
+3. Double-click `start_windows.bat`. The script creates `.venv`, installs dependencies, prepares `.env` from `.env.example` if needed, and prompts for an administrator if none exists.
+4. Open <http://127.0.0.1:8000>. Keep the terminal running.
 
-The local administrator password is entered in the terminal and is not echoed. The dashboard contains no pre-filled administrator or auditor credentials. To demonstrate RBAC, register a normal user in the UI; only an administrator created through the local CLI or private deployment configuration can have the admin role.
+The local administrator password is entered in the terminal and is not echoed. The dashboard does not contain pre-filled administrator or auditor credentials. Public registration creates a regular `user` account; it cannot assign the administrator role.
 
-macOS/Linux:
+### macOS / Linux
 
 ```bash
 chmod +x start_mac_linux.sh
 ./start_mac_linux.sh
 ```
 
-## Local commands
+### Local commands
 
 ```bash
-# Create the first admin if none exists; does not reset existing credentials
+# Create an administrator only if one does not already exist.
+# This does not reset an existing administrator password.
 python -m app.create_admin
 
-# Run tests
+# Run the automated tests
 python -m pytest -q
 
-# Start server manually
+# Start the server manually
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-API docs: http://127.0.0.1:8000/docs  
-Health: http://127.0.0.1:8000/health
+- Dashboard: <http://127.0.0.1:8000>
+- Health check: <http://127.0.0.1:8000/health>
+- API docs: <http://127.0.0.1:8000/docs>
 
-## Free public hosting option: Render + Supabase
+## Public hosting: Render + Supabase
 
-This project includes `render.yaml` for a Render free web service. Use Supabase Free as the PostgreSQL database rather than Render's free Postgres for anything that must last beyond a short demo. Current free plans have limits and can pause/sleep; check the provider dashboards before the presentation.
+The current public deployment uses Render for the FastAPI web service and Supabase PostgreSQL for persistent data. The free plans have limits and may sleep or pause due to inactivity; check both provider dashboards before a presentation.
 
-1. Create a GitHub repository from this project and push the source. **Do not commit `.env`, generated keys, database files, or secrets.**
-2. Create a Supabase project. Copy the PostgreSQL **Session Pooler** connection string from Supabase's Connect panel. Use a URL like `postgresql+psycopg://...` (URL-encode special characters in the password). Keep the string private.
-3. In Render, create a Blueprint from the GitHub repository using `render.yaml`, or create a Python Web Service manually with:
+1. Keep the GitHub repository private unless/until a security review has checked the entire Git history for secrets.
+2. Create a Supabase project. From **Connect**, copy the PostgreSQL **Session Pooler** URI. Use the URI supplied by Supabase and URL-encode any special characters in the database password. The application expects a SQLAlchemy-compatible URL such as `postgresql+psycopg://...`; follow the project configuration and README instructions if the copied URI uses `postgresql://...`.
+3. In Render, create a Blueprint from this repository using `render.yaml`, or create a Python Web Service with:
    - Build command: `pip install -r requirements.txt`
    - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
    - Health check path: `/health`
-4. In Render's private Environment settings, set these values:
-   - `APP_ENV` = `production`
-   - `CLOUD_SIMULATION` = `true` (Moto simulation only; not live AWS)
-   - `DATABASE_URL` = your Supabase PostgreSQL connection string, converted to `postgresql+psycopg://...`
-   - `AUTH_JWT_SECRET` = a unique random string of at least 32 characters
-   - `AUTH_ENCRYPTION_KEY` = a Fernet key generated with the command below
-   - `BOOTSTRAP_ADMIN_EMAIL` = your own admin email
-   - `BOOTSTRAP_ADMIN_PASSWORD` = a unique strong password known only to you
-   - `AWS_DEFAULT_REGION` = `us-east-1`
-   - `PUBLIC_BASE_URL` = your public Render URL (for example `https://cloudauth-demo.onrender.com`)
-   - `RESEND_API_KEY` = an API key from Resend, used to email password-reset links
-   - `RESEND_FROM_EMAIL` = a sender identity verified in Resend, for example `CloudAuth <noreply@your-verified-domain>`
-5. Generate the key values locally (do not put them in Git or send them in chat):
+4. Add configuration in Render's **Environment** settings. Never put production values in source code or GitHub.
 
-   ```bash
-   python -c "import secrets; print(secrets.token_urlsafe(48))"
-   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-   ```
+| Variable | Purpose / expected value |
+|---|---|
+| `APP_ENV` | `production` |
+| `CLOUD_SIMULATION` | `true` for the Moto-based cloud demonstration |
+| `AWS_DEFAULT_REGION` | `us-east-1` for the simulated AWS resources unless your project configuration requires otherwise |
+| `DATABASE_URL` | Private Supabase PostgreSQL connection URI; use the SQLAlchemy-compatible format required by the application |
+| `AUTH_JWT_SECRET` | Unique random secret used to sign JWTs |
+| `AUTH_ENCRYPTION_KEY` | Stable Fernet key used to encrypt sensitive values such as stored MFA secrets |
+| `BOOTSTRAP_ADMIN_EMAIL` | Your administrator email address |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Your unique, strong administrator password |
+| `RESEND_API_KEY` | Private Resend sending API key |
+| `RESEND_FROM_EMAIL` | Sender identity on a verified Resend domain, e.g. `CloudAuth <no-reply@notify.securebiz.co.in>` |
+| `PUBLIC_BASE_URL` | Public HTTPS URL, e.g. `https://cloudauth-demo.onrender.com` |
 
-   Use the first output for `AUTH_JWT_SECRET`, and the second for `AUTH_ENCRYPTION_KEY`.
-6. Deploy. When the service starts for the first time, it creates the single administrator from the private environment variables. It never resets the existing admin's password on later starts and refuses to silently promote a regular account.
-7. Open the public HTTPS URL. Sign in using your admin email/password, immediately enable TOTP MFA with your authenticator app, then log out and test login with the code.
-8. Test from a private/incognito browser: create a normal account and confirm it cannot access `/admin/users` (`403`). Keep the admin credentials private and do not send them to your teacher.
+Generate `AUTH_JWT_SECRET` locally (do not commit or share the output):
 
-### Password recovery setup
+```powershell
+py -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
-- The login page includes **Forgot password?**. The API endpoints are `POST /auth/password/forgot` and `POST /auth/password/reset`.
-- For public deployment, configure `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `PUBLIC_BASE_URL` in Render's private Environment settings. Render's free web services block outbound SMTP ports, so this integration uses Resend's HTTPS API rather than SMTP.
-- Verify a sender domain in Resend before sending password-reset email to arbitrary users. The sample `onboarding@resend.dev` sender is for Resend's test/sandbox use and is not a replacement for verifying your own sender domain for a public application.
-- A reset link expires after 20 minutes, can be used once, and is stored in the database as a SHA-256 token hash. Requesting a new link invalidates prior links for that account. A successful reset revokes refresh-token sessions and clears the failed-login counter/temporary lockout.
-- The public request endpoint returns the same message whether an email is registered or not. In production, it never returns the raw token in the API response. In local development only, the API response can include a reset URL so the flow can be tested without an email provider.
-- Password reset keeps MFA enabled. The user must still supply their authenticator code at the next login if MFA was previously enabled.
+Generate `AUTH_ENCRYPTION_KEY` with a Python environment where `cryptography` is installed:
 
-### Free-hosting caveats
+```powershell
+py -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
 
-- Render free web services sleep after 15 minutes without inbound traffic and can take about a minute to wake. Local filesystem data is ephemeral, so this configuration requires the external PostgreSQL database and stable `AUTH_JWT_SECRET`/`AUTH_ENCRYPTION_KEY` environment variables.
-- Supabase Free can pause projects after a week of low activity. Open the dashboard and check project status before your demo.
-- Moto creates simulated AWS resources in the running process. They are re-created after a restart. The persistent audit database is authoritative; the simulated CloudWatch/S3 side effects are only demonstration exports and may reset after a restart.
-- The app uses a process-local rate limiter; keep one application instance for this demo.
-- A free public URL is suitable for a classroom demonstration, not production identities or sensitive data.
+Keep the encryption key stable across restarts and redeployments. Changing it can make existing encrypted MFA secrets unreadable. The app creates the initial administrator from the private bootstrap environment variables during first startup; it does not reset the password of an existing administrator on subsequent starts.
 
-## Security design notes
+After deployment, open the Render-provided HTTPS URL. Sign in as the administrator, immediately enable TOTP MFA, then sign out and verify that login requires the authenticator code. In a separate private/incognito browser, register an ordinary user and confirm that the user cannot access administrator-only endpoints (for example, `/admin/users` should return `403`). Do not give your administrator credentials to your teacher or embed them in the public UI.
 
-- No admin/auditor password is embedded in HTML/JavaScript or shipped as a default.
+## Password recovery and Resend email setup
+
+The **Forgot password?** flow sends a short-lived reset link by email through the Resend HTTPS API. Render's free web services block outbound SMTP ports, so this project calls the Resend API at `https://api.resend.com/emails` over HTTPS rather than using SMTP.
+
+### 1. Verify a domain you control
+
+1. Create or sign in to a Resend account at <https://resend.com/>.
+2. Open **Domains** and add a domain/subdomain you own or are explicitly authorized to use. This deployment uses `notify.securebiz.co.in` as the sending subdomain.
+3. Resend will show the DNS records required for domain verification and sending. Add the exact records shown in your Resend dashboard to the DNS provider that manages the domain's active nameservers. Do not copy a DKIM TXT value from another account or project; use the full value generated for your own domain.
+4. For this setup, the Cloudflare zone is `securebiz.co.in`. Resend displayed these sending records for the selected region:
+
+   | Type | Name (relative to `securebiz.co.in`) | Target / value |
+   |---|---|---|
+   | CNAME | `send.notify` | `send.forge.rmta.net` |
+   | CNAME | `rsend.notify` | `rsend-apne1.forge.rmta.net` |
+   | TXT | `resend._domainkey.notify` | The full DKIM public-key value shown by Resend; copy it exactly from your own dashboard |
+
+   **Important:** These targets are specific to the records Resend displayed for this project/region. If your Resend dashboard shows different values, use the current dashboard values. DNS providers may append the zone name automatically; avoid entering the full domain twice. Set the CNAMEs to **DNS only** if using Cloudflare, not proxied. Leave TTL on Auto unless your provider requires otherwise.
+5. Return to Resend and wait until the domain status is **Verified**. DNS verification can take time. For password resets, only sending is required; inbound-email/receiving setup is not required.
+
+Only send from a domain you own or are authorized to use. Do not use an institutional domain without permission from its administrator.
+
+### 2. Create a Resend API key
+
+1. In Resend, open **API Keys** and create a key for CloudAuth.
+2. Choose **Sending access**. If the dashboard supports restricting the key to a domain, restrict it to `notify.securebiz.co.in`.
+3. Copy the key when Resend displays it. Store it privately; do not paste it into GitHub, `README.md`, source files, or chat.
+
+### 3. Configure Render environment variables
+
+In Render, open the `cloudauth-demo` service → **Environment**. Add or update the following values:
+
+- `RESEND_API_KEY`: the private Resend API key created above.
+- `RESEND_FROM_EMAIL`: `CloudAuth <no-reply@notify.securebiz.co.in>` (must match your verified domain).
+- `PUBLIC_BASE_URL`: `https://cloudauth-demo.onrender.com` (must be the live public URL, without a trailing slash requirement).
+
+Save the environment changes and wait for Render to redeploy. In the Resend account associated with the API key, the sending domain must be verified and the key must have permission to send.
+
+### 4. Test the password-reset flow
+
+1. Open the live CloudAuth page and click **Forgot password?**.
+2. Submit the email address of an existing, active CloudAuth account. The public endpoint deliberately returns the same generic response for registered and unregistered addresses so it does not reveal account existence.
+3. Check the recipient's Inbox, Spam/Junk and Promotions folders. In Resend, check **Emails** for message delivery status and **Logs** for the `POST /emails` API request/status.
+4. Open the reset link. It expires after 20 minutes and can be used only once. Enter a new password and submit it.
+5. On successful reset, the page displays a success message and redirects to the login form. Sign in with the new password; if MFA is enabled, a valid authenticator code is still required. The old password should fail.
+
+### 5. Troubleshooting Resend delivery
+
+- **No email appears:** Confirm the email belongs to an existing, active CloudAuth account. The generic API response is intentional and does not prove an email was sent.
+- **Resend reports an authorization error:** Confirm `RESEND_API_KEY` is current, active, has Sending access, and belongs to the same Resend account/domain. Confirm `RESEND_FROM_EMAIL` matches the verified domain.
+- **Domain not verified:** Check the Resend domain page and make sure the DNS records exactly match the current records Resend generated. Check the DNS provider managing the active nameservers and ensure Cloudflare CNAMEs are DNS only.
+- **Render logs say email delivery failed:** Check Render logs at the time of the request, plus Resend **Logs** and **Emails**. The production endpoint responds generically to avoid email/account enumeration.
+- **HTTP 403 with a non-JSON response and no Resend log entry:** The response may be generated by an intermediary/edge layer before reaching Resend. A Cloudflare `1010` response means a browser-signature block. Do not repeatedly create API keys or change DNS records. Capture the HTTP status, response content type, Cloudflare Ray ID and timestamp (without credentials or reset tokens) and contact Resend Support if needed.
+- **Direct API test succeeds but hosted app fails:** Compare the hosted environment variables, sender, API endpoint, request headers, and the most recent deployed commit. Do not print or log the API key, recipient reset URL, or token.
+
+The public API does not return a raw reset token. In local development only, a reset URL may be returned to facilitate testing when email is not configured. Reset links are stored in the database as SHA-256 token hashes; a new reset request invalidates previous unused links. After a successful reset, refresh-token sessions are revoked and temporary failed-login/lockout state is cleared. MFA remains enabled.
+
+## Tests
+
+Run the automated suite from the project root with the project's virtual environment activated:
+
+```powershell
+python -m pytest -q
+```
+
+A successful run should report all tests as passed. Test count may change as features are added. Automated tests check defined behavior; they do not prove the application is free of all security vulnerabilities.
+
+## Free-hosting caveats
+
+- Render free web services sleep after 15 minutes without inbound traffic and may take about a minute to wake. The public URL remains the same, but the first request after sleep may be slow.
+- Render's local filesystem is ephemeral. Use the external PostgreSQL database for persistent application data and keep `AUTH_JWT_SECRET` and `AUTH_ENCRYPTION_KEY` stable.
+- Supabase Free has limits and free projects can pause after a period of inactivity. Check its dashboard before a presentation.
+- Moto's simulated AWS resources are recreated after a process restart. The database audit records are the persistent application records; simulated CloudWatch/S3 exports are demonstration side effects.
+- The app's rate limiter is process-local; keep one application instance for this demo.
+- A free public URL is suitable for a classroom demonstration, not for real users' sensitive identity data or production authentication workloads.
+
+## Security notes and limitations
+
+- Never commit `.env`, generated keys, database files, API keys, database connection strings, administrator passwords, MFA secrets, password-reset links, or reset tokens.
+- The `.env.example` file is only a template; keep real values in local untracked `.env` files or the hosting provider's private environment settings.
+- No administrator/auditor password is embedded in HTML/JavaScript or shipped as a default.
 - Public registration always assigns role `user`; there is no public role-selection input.
-- Admin creation is local-terminal-only (`python -m app.create_admin`) or one-time bootstrap via private host environment variables.
-- A hosted deployment fails startup if production secrets, database URL or bootstrap credentials are missing.
-- Admin credentials must be unique, private and protected with MFA after first login.
-- Passwords use Argon2; refresh tokens are stored as hashes; JWT access tokens expire after 15 minutes.
-- Password-reset tokens are random, time-limited, single-use, stored as hashes, and never returned by the public production API.
-- `AUTH_ENCRYPTION_KEY` remains stable across host restarts so encrypted MFA secrets remain decryptable. The Moto KMS resource is tested separately as a simulated cloud-integration demonstration; it is not the persistent key store for hosted MFA records.
-- Real AWS Secrets Manager/KMS/CloudWatch/S3 integration, production-grade centralized rate limiting, access-token denylisting, recovery codes, backups and a formal security review remain future work.
+- Hosted administrator creation is bootstrapped from private environment variables only once. Changing the bootstrap password later does not automatically reset an already-existing admin's password.
+- Passwords use Argon2; refresh tokens and reset tokens are stored as hashes; access tokens expire after 15 minutes.
+- `AUTH_ENCRYPTION_KEY` must remain stable to decrypt existing MFA secrets.
+- Current AWS Secrets Manager/KMS/CloudWatch/S3 integration is simulated with Moto. Live AWS deployment, production-grade centralized rate limiting, access-token denylisting, MFA recovery codes, backups, alerting, and a formal security review are future work.
+
+## Updating the GitHub repository
+
+After editing this file in your local project folder:
+
+```powershell
+git add README.md
+git diff --cached --check
+git commit -m "Document Resend password reset setup"
+git push origin main
+```
+
+Render can deploy the latest commit automatically when automatic deploys are enabled. Check the Render Events/Logs page to confirm the deployment succeeds.
