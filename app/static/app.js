@@ -394,7 +394,10 @@
   });
   $('#reset-password-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    // Save the form element before awaiting: event.currentTarget becomes null
+    // once this async event handler yields control back to the browser.
+    const resetForm = event.currentTarget;
+    const form = new FormData(resetForm);
     const newPassword = form.get('new_password');
     if (newPassword !== form.get('confirm_password')) {
       toast('The passwords do not match.', 'error');
@@ -408,10 +411,23 @@
         body: JSON.stringify({ token: form.get('token') || state.resetToken, new_password: newPassword })
       }, false);
       state.resetToken = '';
-      event.currentTarget.reset();
-      clearSession();
+      resetForm.reset();
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      toast(result.message || 'Password reset. Sign in with your new password.', 'success');
+
+      // Clear credentials from this browser immediately after a successful reset.
+      state.accessToken = '';
+      state.refreshToken = '';
+      state.user = null;
+      state.mfaSetup = null;
+      localStorage.removeItem('cloudauth_access');
+      localStorage.removeItem('cloudauth_refresh');
+
+      // Show success on the reset screen first, then return to the main login form.
+      toast('Password changed successfully. Redirecting to sign in...', 'success');
+      window.setTimeout(() => {
+        clearSession();
+        $('#login-email').focus();
+      }, 2500);
     } catch (error) {
       toast(error.message, 'error');
     } finally { button.disabled = false; }
