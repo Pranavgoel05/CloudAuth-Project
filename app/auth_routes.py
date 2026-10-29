@@ -111,8 +111,10 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
                 send_password_reset_email(email, reset_url)
                 record_event(db, event="password_reset_email_sent", email=email,
                              ip=_request_ip(request), success=True)
-            except Exception:
-                logger.warning("Password reset email delivery failed; check Resend configuration.")
+            except Exception as exc:
+                # EmailDeliveryError exposes only a sanitized provider status/message.
+                # Never log the recipient, API key, reset token, or reset URL here.
+                logger.error("Password reset email delivery failed: %s", str(exc)[:320])
                 record_event(db, event="password_reset_email_failed", email=email,
                              ip=_request_ip(request), success=False)
         elif not is_production:

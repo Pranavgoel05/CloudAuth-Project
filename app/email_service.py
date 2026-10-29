@@ -1,6 +1,7 @@
-"""Email delivery via Resend's HTTPS API (compatible with Render's free service)."""
+"""Email delivery via Resend's HTTPS API with safe diagnostic errors."""
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from html import escape
@@ -10,8 +11,29 @@ class EmailDeliveryError(RuntimeError):
     """Raised when the configured email provider rejects a message."""
 
 
+def _provider_error_message(raw: bytes, *, api_key: str, sender: str, recipient: str) -> str:
+    """Extract a short provider error without logging credentials or reset links."""
+    try:
+        data = json.loads(raw.decode("utf-8", errors="replace"))
+    except (ValueError, UnicodeDecodeError):
+        return "provider returned a non-JSON error response"
+
+    if not isinstance(data, dict):
+        return "provider returned an unexpected error response"
+
+    error_name = data.get("name") or data.get("type") or "provider_error"
+    message = data.get("message") or data.get("error") or "request rejected"
+    message = str(message)
+    for secret in (api_key, recipient, sender):
+        if secret:
+            message = message.replace(secret, "[redacted]")
+    message = re.sub(r"re_[A-Za-z0-9_-]+", "[redacted-api-key]", message)
+    message = " ".join(message.split())[:240]
+    return f"{error_name}: {message}"
+
+
 def send_password_reset_email(to_email: str, reset_url: str) -> None:
-    """Send a reset message through Resend; no secrets are written to logs."""
+    """Send a reset message through Resend; never log message content or secrets."""
     api_key = os.getenv("RESEND_API_KEY", "").strip()
     if not api_key:
         raise EmailDeliveryError("RESEND_API_KEY is not configured")
@@ -46,9 +68,19 @@ def send_password_reset_email(to_email: str, reset_url: str) -> None:
     try:
         with urllib.request.urlopen(request, timeout=12) as response:
             if not 200 <= response.status < 300:
-                raise EmailDeliveryError(f"Email provider returned HTTP {response.status}")
+                raise EmailDeliveryError(f"Resend rejected email request (HTTP {response.status})")
+            # Do not log the response body, recipient, or reset URL.
+            import logging
+            logging.getLogger(__name__).info("Resend accepted password-reset email request (HTTP %s)", response.status)
     except urllib.error.HTTPError as exc:
-        # Never relay provider response text: it may contain account or request metadata.
-        raise EmailDeliveryError(f"Email provider returned HTTP {exc.code}") from None
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise EmailDeliveryError("Email provider could not be reached") from None
+        details = _provider_error_message(
+            exc.read(4096), api_key=api_key, sender=sender, recipient=to_email
+        )
+        raise EmailDeliveryError(f"Resend rejected email request (HTTP {exc.code}; {details})") from None
+    except urllib.error.URLError as exc:
+        reason = exc.reason
+        reason_type = type(reason).__name__
+        # Include only a coarse diagnostic category; no request or credential details.
+        raise EmailDeliveryError(f"Could not reach Resend API (network error: {reason_type})") from None
+    except TimeoutError:
+        raise EmailDeliveryError("Resend API request timed out") from None
