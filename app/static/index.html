@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101b2e">
+  <title>CloudAuth — Identity Security Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <section id="auth-view" class="auth-layout">
+    <div class="hero-panel">
+      <div class="brand"><span class="brand-mark">CA</span><span>Cloud<span class="brand-light">Auth</span></span></div>
+      <div class="hero-content">
+        <div class="eyebrow"><span class="pulse-dot"></span> IDENTITY SECURITY CONSOLE</div>
+        <h1>Trust every<br><span>identity.</span><br>Verify every request.</h1>
+        <p>A cloud-ready authentication demo built with Python, FastAPI and layered security controls.</p>
+        <div class="hero-points">
+          <div><span class="point-icon">✓</span><span><b>Identity protection</b><small>Argon2 password hashing and signed JWTs</small></span></div>
+          <div><span class="point-icon">✓</span><span><b>Access governance</b><small>Role-based permissions and MFA</small></span></div>
+          <div><span class="point-icon">✓</span><span><b>Security visibility</b><small>Audit events and simulated cloud services</small></span></div>
+        </div>
+      </div>
+      <div class="hero-footer">FINAL-YEAR CYBERSECURITY PROJECT <span>•</span> MILESTONE 3</div>
+    </div>
+
+    <div class="auth-panel">
+      <div class="mobile-brand brand"><span class="brand-mark">CA</span><span>Cloud<span class="brand-light">Auth</span></span></div>
+      <div class="auth-card">
+        <div class="auth-heading">
+          <div class="eyebrow muted">SECURE ACCESS</div>
+          <h2 id="auth-title">Welcome back</h2>
+          <p id="auth-subtitle">Sign in to your security workspace.</p>
+        </div>
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="show-login" type="button">Sign in</button>
+          <button class="auth-tab" id="show-register" type="button">Create account</button>
+        </div>
+        <form id="login-form" class="form-stack">
+          <label>Email address<input name="email" id="login-email" type="email" autocomplete="username" placeholder="you@example.com" required></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required></label>
+          <label>Authenticator code <span class="optional">Optional unless MFA is enabled</span><input name="totp_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="6-digit code"></label>
+          <button class="btn btn-primary btn-full" type="submit">Sign in <span>→</span></button>
+        </form>
+        <form id="register-form" class="form-stack hidden">
+          <label>Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+          <label>Password<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Create a strong password" required></label>
+          <div class="password-hint">12–128 characters; use uppercase, lowercase, a number and a symbol.</div>
+          <button class="btn btn-primary btn-full" type="submit">Create account <span>→</span></button>
+        </form>
+        <div class="auth-foot"><span class="status-dot"></span> Protected access <span class="separator">·</span> <a href="/docs" target="_blank" rel="noreferrer">API documentation ↗</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="app-view" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand sidebar-brand"><span class="brand-mark">CA</span><span>Cloud<span class="brand-light">Auth</span></span></div>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">◈</span> Overview</button>
+        <button class="nav-item" data-view="mfa"><span class="nav-icon">▣</span> Multi-factor auth <span id="mfa-nav-badge" class="nav-badge">SETUP</span></button>
+        <button class="nav-item" data-view="audit" data-roles="admin,auditor"><span class="nav-icon">≋</span> Audit logs</button>
+        <button class="nav-item" data-view="users" data-roles="admin"><span class="nav-icon">♙</span> User management</button>
+        <button class="nav-item" data-view="cloud" data-roles="admin"><span class="nav-icon">☁</span> Cloud security</button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-status"><span class="status-dot"></span><div><b>System online</b><small>API connected</small></div></div>
+      <div class="sidebar-user"><div class="user-avatar" id="sidebar-avatar">U</div><div class="sidebar-user-info"><b id="sidebar-email">—</b><small id="sidebar-role">USER</small></div><button id="logout-btn" class="icon-button" title="Sign out" aria-label="Sign out">↪</button></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar"><div><div class="breadcrumb">SECURITY CONSOLE <span>/</span> <b id="breadcrumb-title">Overview</b></div><h1 id="page-title">Overview</h1></div><div class="topbar-right"><div class="env-chip"><span class="status-dot"></span> DEMO ENVIRONMENT</div><button class="icon-button docs-button" onclick="window.open('/docs','_blank','noopener')" title="Open API docs" aria-label="Open API docs">↗</button></div></header>
+
+      <section class="page-view" id="page-overview">
+        <div class="welcome-banner"><div><div class="eyebrow">AUTHENTICATION PLATFORM</div><h2>Good to see you, <span id="welcome-name">there</span>.</h2><p>Your identity security workspace is ready. Review your access and security posture below.</p></div><div class="welcome-art"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="orb-shield">✓</div><div class="orb-ring"></div></div></div>
+        <div class="metric-grid">
+          <article class="metric-card"><div class="metric-top"><span class="metric-icon blue">♙</span><span class="metric-label">SIGNED-IN IDENTITY</span></div><div class="metric-value" id="metric-role">User</div><div class="metric-foot">Verified application identity</div></article>
+          <article class="metric-card"><div class="metric-top"><span class="metric-icon green">▣</span><span class="metric-label">MULTI-FACTOR AUTH</span></div><div class="metric-value" id="metric-mfa">Not enabled</div><div class="metric-foot" id="metric-mfa-foot">Add an extra layer of protection</div></article>
+          <article class="metric-card"><div class="metric-top"><span class="metric-icon violet">◉</span><span class="metric-label">ACCESS SESSION</span></div><div class="metric-value">JWT <span class="small-value">· 15 min</span></div><div class="metric-foot">Short-lived signed access token</div></article>
+          <article class="metric-card"><div class="metric-top"><span class="metric-icon amber">☁</span><span class="metric-label">CLOUD SERVICES</span></div><div class="metric-value" id="metric-cloud">Checking…</div><div class="metric-foot" id="metric-cloud-foot">AWS simulation status</div></article>
+        </div>
+        <div class="content-grid overview-grid">
+          <article class="panel profile-panel"><div class="panel-heading"><div><div class="eyebrow muted">ACCOUNT</div><h3>Your profile</h3></div><span class="pill pill-green">Authenticated</span></div><div class="profile-identity"><div class="profile-avatar" id="profile-avatar">U</div><div><h4 id="profile-email">—</h4><p>CloudAuth member</p></div></div><div class="detail-list"><div><span>User ID</span><b id="profile-id">—</b></div><div><span>Role</span><b id="profile-role">—</b></div><div><span>Account status</span><b><span class="status-dot"></span> Active</b></div><div><span>MFA</span><b id="profile-mfa">—</b></div></div><button class="btn btn-secondary" id="refresh-profile">Refresh profile ↻</button></article>
+          <article class="panel activity-panel"><div class="panel-heading"><div><div class="eyebrow muted">SECURITY</div><h3>Security controls</h3></div><span class="panel-tag">ACTIVE</span></div><div class="control-list"><div class="control-row"><span class="control-icon">⌑</span><div><b>Password hashing</b><small>Argon2 password verification</small></div><span class="control-state">ON</span></div><div class="control-row"><span class="control-icon">⌘</span><div><b>Token validation</b><small>Signed JWT and expiration checks</small></div><span class="control-state">ON</span></div><div class="control-row"><span class="control-icon">♙</span><div><b>Role enforcement</b><small>Permissions checked by role</small></div><span class="control-state">ON</span></div><div class="control-row"><span class="control-icon">≋</span><div><b>Audit trail</b><small>Security event records</small></div><span class="control-state">ON</span></div></div><div class="panel-bottom-note"><span>ⓘ</span> AWS services are simulated for this academic demo.</div></article>
+        </div>
+        <div class="panel quick-panel"><div class="panel-heading"><div><div class="eyebrow muted">QUICK ACTIONS</div><h3>Explore your security workspace</h3></div></div><div class="quick-actions"><button data-go="mfa" class="quick-action"><span class="quick-icon blue">▣</span><span><b>Configure MFA</b><small>Add a second factor</small></span><span class="quick-arrow">→</span></button><button data-go="audit" data-roles="admin,auditor" class="quick-action"><span class="quick-icon violet">≋</span><span><b>Review audit logs</b><small>Inspect security events</small></span><span class="quick-arrow">→</span></button><button data-go="users" data-roles="admin" class="quick-action"><span class="quick-icon green">♙</span><span><b>Manage users</b><small>Admin-only directory</small></span><span class="quick-arrow">→</span></button></div></div>
+      </section>
+
+      <section class="page-view hidden" id="page-mfa">
+        <div class="page-intro"><div class="eyebrow muted">ACCOUNT SECURITY</div><h2>Multi-factor authentication</h2><p>Protect your account with a time-based one-time password from an authenticator app.</p></div>
+        <div class="content-grid mfa-grid"><article class="panel"><div class="panel-heading"><div><div class="eyebrow muted">MFA STATUS</div><h3 id="mfa-status-title">Set up an authenticator</h3></div><span id="mfa-status-pill" class="pill pill-amber">Not enabled</span></div><p class="panel-copy" id="mfa-status-description">Start enrollment, add the secret to an authenticator app, then verify a current six-digit code.</p><button id="mfa-setup-btn" class="btn btn-primary">Start MFA setup →</button><div id="mfa-secret-area" class="mfa-secret-area hidden"><div id="mfa-qr-area" class="mfa-qr-area hidden"><img id="mfa-qr" alt="Authenticator enrollment QR code"><p>Scan this code in your authenticator app, or enter the secret manually below.</p></div><div class="secret-label">AUTHENTICATOR SECRET</div><code id="mfa-secret">—</code><button id="copy-mfa-secret" class="btn btn-secondary btn-small">Copy secret</button><div class="secret-label uri-label">PROVISIONING URI</div><code id="mfa-uri" class="uri-code">—</code><p class="subtle-note">In your authenticator app, choose “Enter setup key manually” and use this secret. Keep it private.</p><form id="mfa-enable-form" class="inline-form"><label>6-digit authenticator code<input name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456"></label><button class="btn btn-primary" type="submit">Verify & enable</button></form></div></article><article class="panel how-panel"><div class="panel-heading"><div><div class="eyebrow muted">HOW IT WORKS</div><h3>Two-factor protection</h3></div><span class="panel-tag">TOTP</span></div><div class="steps"><div class="step"><span>01</span><div><b>Start enrollment</b><small>The service creates a unique authenticator secret.</small></div></div><div class="step"><span>02</span><div><b>Add it to your app</b><small>Use an authenticator app that supports TOTP.</small></div></div><div class="step"><span>03</span><div><b>Verify your code</b><small>Enter the current six-digit code to enable MFA.</small></div></div><div class="step"><span>04</span><div><b>Use it at login</b><small>Future logins require the password and a code.</small></div></div></div><div class="panel-bottom-note"><span>ⓘ</span> Never share your authenticator secret or code.</div></article></div>
+      </section>
+
+      <section class="page-view hidden" id="page-audit"><div class="page-intro"><div class="eyebrow muted">SECURITY VISIBILITY</div><h2>Audit events</h2><p>Review successful and rejected authentication operations. Only admin and auditor roles can view this page.</p></div><article class="panel table-panel"><div class="panel-heading"><div><h3>Event timeline</h3><p class="panel-copy">Latest 50 stored events</p></div><button id="reload-audit" class="btn btn-secondary btn-small">↻ Refresh</button></div><div id="audit-table" class="table-wrap"><div class="loading-state">Loading security events…</div></div></article></section>
+
+      <section class="page-view hidden" id="page-users"><div class="page-intro"><div class="eyebrow muted">ADMINISTRATION</div><h2>User management</h2><p>Directory of registered users. This view is restricted to the admin role.</p></div><article class="panel table-panel"><div class="panel-heading"><div><h3>Registered accounts</h3><p class="panel-copy">Roles are assigned by an authorized process, not public registration.</p></div><button id="reload-users" class="btn btn-secondary btn-small">↻ Refresh</button></div><div id="users-table" class="table-wrap"><div class="loading-state">Loading users…</div></div></article></section>
+
+      <section class="page-view hidden" id="page-cloud"><div class="page-intro"><div class="eyebrow muted">CLOUD INTEGRATION</div><h2>Cloud security status</h2><p>Inspect the services used by the demo adapter. These are Moto-simulated AWS resources, not live AWS infrastructure.</p></div><div class="metric-grid cloud-metrics"><article class="metric-card"><div class="metric-top"><span class="metric-icon blue">♢</span><span class="metric-label">MODE</span></div><div class="metric-value" id="cloud-mode">—</div><div class="metric-foot">Cloud-service adapter</div></article><article class="metric-card"><div class="metric-top"><span class="metric-icon green">✓</span><span class="metric-label">RESOURCES</span></div><div class="metric-value" id="cloud-count">—</div><div class="metric-foot">Services responding to checks</div></article></div><article class="panel"><div class="panel-heading"><div><div class="eyebrow muted">RESOURCE CHECKS</div><h3>Simulated AWS components</h3></div><button id="reload-cloud" class="btn btn-secondary btn-small">↻ Refresh</button></div><div id="cloud-resource-list" class="resource-list"></div><div class="panel-bottom-note"><span>ⓘ</span> Moto intercepts AWS SDK calls in this process; no live AWS account is used. Persistent MFA secrets use a stable app-managed encryption key; KMS is separately self-tested in simulation.</div></article></section>
+
+      <footer class="main-footer"><span>CloudAuth Identity Security Console</span><span>Academic demonstration <span class="separator">·</span> <a href="/docs" target="_blank" rel="noreferrer">API docs</a></span></footer>
+    </main>
+  </section>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

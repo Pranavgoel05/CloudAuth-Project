@@ -1,0 +1,16 @@
+.env
+.local_jwt_secret
+.local_encryption.key
+cloud_auth.db
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.ipynb_checkpoints/
+cloud_auth_test.db
+.venv/
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+dist/
+build/
