@@ -2,7 +2,8 @@
 from app.totp import TOTP
 from sqlalchemy import select
 from app.database import SessionLocal
-from app.models import AuditLog, RefreshToken, User
+from urllib.parse import parse_qs, urlsplit
+from app.models import AuditLog, PasswordResetToken, RefreshToken, User
 from app.security import verify_password
 
 PASSWORD = "CloudSecure!Pass2026"
@@ -170,6 +171,88 @@ def test_dashboard_does_not_publish_demo_admin_credentials(client):
     assert "admin@demo.example.com" not in page + script
     assert "AdminDemo!2026Secure" not in page + script
     assert "QUICK DEMO ACCESS" not in page
+
+
+def test_password_reset_is_hashed_single_use_and_revokes_refresh_sessions(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    assert register(client).status_code == 201
+    initial_login = login(client)
+    assert initial_login.status_code == 200
+
+    requested = client.post("/auth/password/forgot", json={"email": "student@example.com"})
+    assert requested.status_code == 202, requested.text
+    payload = requested.json()
+    assert "If an account matches" in payload["message"]
+    reset_token = parse_qs(urlsplit(payload["reset_url"]).fragment)["reset_token"][0]
+
+    with SessionLocal() as db:
+        row = db.scalar(select(PasswordResetToken))
+        assert row is not None
+        assert row.token_hash != reset_token
+        assert len(row.token_hash) == 64
+
+    new_password = "NewCloudAuth!Pass2026"
+    reset = client.post("/auth/password/reset", json={"token": reset_token, "new_password": new_password})
+    assert reset.status_code == 200, reset.text
+    assert login(client, password=PASSWORD).status_code == 401
+    assert login(client, password=new_password).status_code == 200
+    # A one-time reset token cannot be replayed.
+    assert client.post("/auth/password/reset", json={"token": reset_token, "new_password": "AnotherNew!Pass2026"}).status_code == 400
+    # The session created before the reset cannot use its old refresh token again.
+    assert client.post("/auth/refresh", json={"refresh_token": initial_login.json()["refresh_token"]}).status_code == 401
+
+
+def test_forgot_password_does_not_disclose_unknown_email(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    register(client)
+    known = client.post("/auth/password/forgot", json={"email": "student@example.com"})
+    unknown = client.post("/auth/password/forgot", json={"email": "nobody@example.com"})
+    assert known.status_code == unknown.status_code == 202
+    assert known.json()["message"] == unknown.json()["message"]
+    assert "reset_url" not in unknown.json()
+
+
+def test_production_password_reset_requires_email_provider_for_every_address(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    known = client.post("/auth/password/forgot", json={"email": "admin@example.com"})
+    unknown = client.post("/auth/password/forgot", json={"email": "nobody@example.com"})
+    assert known.status_code == unknown.status_code == 503
+    assert known.json()["detail"] == unknown.json()["detail"]
+
+
+def test_resend_email_adapter_uses_https_and_does_not_require_smtp(monkeypatch):
+    import json
+    import urllib.request
+    from app.email_service import send_password_reset_email
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key_only")
+    monkeypatch.setenv("RESEND_FROM_EMAIL", "CloudAuth <onboarding@resend.dev>")
+    captured = {}
+
+    class FakeResponse:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    send_password_reset_email("student@example.com", "https://example.test/#reset_token=one-time-token")
+    assert captured["url"] == "https://api.resend.com/emails"
+    assert captured["method"] == "POST"
+    assert captured["payload"]["to"] == ["student@example.com"]
+    assert "one-time-token" in captured["payload"]["text"]
+    assert captured["timeout"] == 12
 
 
 def test_private_admin_bootstrap_creates_once_without_resetting_password(client, monkeypatch):

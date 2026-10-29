@@ -67,9 +67,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Cloud User Authentication System",
-    version="1.1.0",
+    version="1.2.0",
     description=("Final-year demo: secure registration, Argon2 password hashing, JWT sessions, "
-                 "RBAC, TOTP MFA, rate limiting, lockout, audit logging and optional simulated AWS."),
+                 "RBAC, TOTP MFA, single-use password reset, rate limiting, lockout, audit logging "
+                 "and optional simulated AWS."),
     lifespan=lifespan,
 )
 app.include_router(router)

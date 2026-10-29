@@ -2,8 +2,11 @@
 from datetime import datetime, timedelta, timezone
 import base64
 import io
+import logging
+import os
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 import jwt
@@ -11,16 +14,20 @@ from app import totp as pyotp
 from app.audit import record_event
 from app.cloud_services import decrypt_sensitive_value, encrypt_sensitive_value, get_cloud_status
 from app.database import get_db
-from app.models import AuditLog, RefreshToken, User, utcnow_naive
+from app.email_service import send_password_reset_email
+from app.models import AuditLog, PasswordResetToken, RefreshToken, User, utcnow_naive
 from app.rbac import get_current_user, require_roles
 from app.rate_limit import limiter
-from app.schemas import LoginRequest, MFACodeRequest, RefreshRequest, RegisterRequest
+from app.schemas import (ForgotPasswordRequest, LoginRequest, MFACodeRequest,
+                         RefreshRequest, RegisterRequest, ResetPasswordRequest)
 from app.security import (ACCESS_TOKEN_MINUTES, create_jwt, decode_jwt, hash_password,
                           hash_token, validate_password, verify_password)
 
 router = APIRouter()
 LOCKOUT_THRESHOLD = 5
 LOCKOUT_MINUTES = 5
+PASSWORD_RESET_MINUTES = 20
+logger = logging.getLogger(__name__)
 
 
 def _request_ip(request: Request) -> str:
@@ -62,6 +69,118 @@ def register(payload: RegisterRequest, request: Request, db: Session = Depends(g
         raise HTTPException(status_code=409, detail="An account with this email already exists")
     record_event(db, event="registration_success", email=email, ip=_request_ip(request), success=True)
     return {"message": "Account created", "user": {"id": user.id, "email": user.email, "role": user.role}}
+
+
+@router.post("/auth/password/forgot", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("5/minute")
+def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Request a password reset without disclosing whether an account exists."""
+    generic = {"message": "If an account matches that email, password-reset instructions will be sent."}
+    email = str(payload.email).lower().strip()
+
+    # In production, fail uniformly until email delivery is configured; never create
+    # a reset token that cannot reach the account owner.
+    is_production = os.getenv("APP_ENV", "development").lower() == "production"
+    if is_production and not os.getenv("RESEND_API_KEY", "").strip():
+        logger.error("Password reset unavailable: RESEND_API_KEY is not configured")
+        raise HTTPException(status_code=503, detail="Password-reset email service is temporarily unavailable")
+
+    user = db.scalar(select(User).where(User.email == email, User.is_active.is_(True)))
+    now = utcnow_naive()
+    reset_url = None
+    if user is not None:
+        # Only the hash is persisted; a new request invalidates previous links.
+        prior_tokens = db.scalars(select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )).all()
+        for prior in prior_tokens:
+            prior.used_at = now
+        raw_token = secrets.token_urlsafe(32)
+        db.add(PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_token(raw_token),
+            expires_at=now + timedelta(minutes=PASSWORD_RESET_MINUTES),
+        ))
+        db.commit()
+        base_url = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+        # URL fragment is read by the browser and is not sent in the HTTP request line.
+        reset_url = f"{base_url}/#reset_token={raw_token}"
+        if os.getenv("RESEND_API_KEY", "").strip():
+            try:
+                send_password_reset_email(email, reset_url)
+                record_event(db, event="password_reset_email_sent", email=email,
+                             ip=_request_ip(request), success=True)
+            except Exception:
+                logger.warning("Password reset email delivery failed; check Resend configuration.")
+                record_event(db, event="password_reset_email_failed", email=email,
+                             ip=_request_ip(request), success=False)
+        elif not is_production:
+            # Local-only convenience for tests/development. Never return reset tokens
+            # from the public production API response.
+            generic["reset_url"] = reset_url
+
+    # Use the same status and message for known and unknown addresses.
+    record_event(db, event="password_reset_requested", email=email,
+                 ip=_request_ip(request), success=True)
+    return generic
+
+
+@router.post("/auth/password/reset")
+@limiter.limit("10/minute")
+def reset_password(payload: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Consume an unexpired reset token, change the password, and revoke refresh sessions."""
+    try:
+        validate_password(payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    now = utcnow_naive()
+    token_hash = hash_token(payload.token)
+    # Atomically consume the token before changing the password so parallel submissions
+    # cannot both reuse the same reset link. The transaction commits with the password.
+    claimed = db.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.token_hash == token_hash,
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.expires_at > now,
+        )
+        .values(used_at=now)
+        .returning(PasswordResetToken.id, PasswordResetToken.user_id)
+    ).one_or_none()
+    if claimed is None:
+        record_event(db, event="password_reset_rejected", ip=_request_ip(request), success=False)
+        raise HTTPException(status_code=400, detail="Invalid or expired password-reset link")
+
+    reset_record_id, reset_user_id = claimed
+    user = db.get(User, reset_user_id)
+    if user is None or not user.is_active:
+        db.commit()  # Consume the token even if its account is no longer active.
+        record_event(db, event="password_reset_rejected", ip=_request_ip(request), success=False)
+        raise HTTPException(status_code=400, detail="Invalid or expired password-reset link")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.failed_attempts = 0
+    user.locked_until = None
+    # Consume all other outstanding reset links and revoke refresh sessions.
+    other_resets = db.scalars(select(PasswordResetToken).where(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+        PasswordResetToken.id != reset_record_id,
+    )).all()
+    for other in other_resets:
+        other.used_at = now
+    active_refresh_tokens = db.scalars(select(RefreshToken).where(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked_at.is_(None),
+    )).all()
+    for refresh_token in active_refresh_tokens:
+        refresh_token.revoked_at = now
+    db.commit()
+    record_event(db, event="password_reset_success", email=user.email,
+                 ip=_request_ip(request), success=True)
+    return {"message": "Password reset successful. Sign in with your new password."}
 
 
 @router.post("/auth/login")

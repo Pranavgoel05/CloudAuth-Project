@@ -22,3 +22,12 @@ class RefreshRequest(BaseModel):
 class MFACodeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: str = Field(pattern=r"^\d{6}$")
+
+class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=20, max_length=256)
+    new_password: str = Field(min_length=12, max_length=128)

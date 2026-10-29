@@ -34,7 +34,7 @@
           <h2 id="auth-title">Welcome back</h2>
           <p id="auth-subtitle">Sign in to your security workspace.</p>
         </div>
-        <div class="auth-tabs">
+        <div class="auth-tabs" id="auth-tabs">
           <button class="auth-tab active" id="show-login" type="button">Sign in</button>
           <button class="auth-tab" id="show-register" type="button">Create account</button>
         </div>
@@ -44,11 +44,28 @@
           <label>Authenticator code <span class="optional">Optional unless MFA is enabled</span><input name="totp_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="6-digit code"></label>
           <button class="btn btn-primary btn-full" type="submit">Sign in <span>→</span></button>
         </form>
+        <div class="auth-secondary-action" id="forgot-password-action"><button class="text-link" id="forgot-password-link" type="button">Forgot password?</button></div>
         <form id="register-form" class="form-stack hidden">
           <label>Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
           <label>Password<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Create a strong password" required></label>
           <div class="password-hint">12–128 characters; use uppercase, lowercase, a number and a symbol.</div>
           <button class="btn btn-primary btn-full" type="submit">Create account <span>→</span></button>
+        </form>
+        <form id="forgot-password-form" class="form-stack hidden">
+          <p class="form-description">Enter the email address associated with your account. If it exists, we'll send a secure reset link.</p>
+          <label>Email address<input name="email" id="forgot-email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+          <button class="btn btn-primary btn-full" type="submit">Send reset link <span>→</span></button>
+          <p id="reset-dev-link" class="dev-reset-link hidden"></p>
+          <button class="text-link back-link" id="back-to-login-from-forgot" type="button">← Back to sign in</button>
+        </form>
+        <form id="reset-password-form" class="form-stack hidden">
+          <p class="form-description">Choose a new strong password. Reset links expire after 20 minutes and can only be used once.</p>
+          <input name="token" id="reset-password-token" type="hidden">
+          <label>New password<input name="new_password" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Create a strong password" required></label>
+          <label>Confirm new password<input name="confirm_password" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Enter it again" required></label>
+          <div class="password-hint">12–128 characters; use uppercase, lowercase, a number and a symbol.</div>
+          <button class="btn btn-primary btn-full" type="submit">Reset password <span>→</span></button>
+          <button class="text-link back-link" id="back-to-login-from-reset" type="button">← Back to sign in</button>
         </form>
         <div class="auth-foot"><span class="status-dot"></span> Protected access <span class="separator">·</span> <a href="/docs" target="_blank" rel="noreferrer">API documentation ↗</a></div>
       </div>

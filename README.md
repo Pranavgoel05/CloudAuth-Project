@@ -1,6 +1,6 @@
 # Cloud User Authentication System Using Python — Hardened Demo & Free Hosting
 
-This is an academic prototype featuring a FastAPI backend, browser dashboard, Argon2 password hashing, signed JWT access tokens, refresh-token rotation/revocation, TOTP MFA, RBAC, account lockout, rate limiting, database audit logs, and a Moto simulation of selected AWS services.
+This is an academic prototype featuring a FastAPI backend, browser dashboard, Argon2 password hashing, signed JWT access tokens, refresh-token rotation/revocation, TOTP MFA, RBAC, single-use password-reset links, account lockout, rate limiting, database audit logs, and a Moto simulation of selected AWS services.
 
 **Not a production identity provider.** Use only demo accounts and data. The simulated AWS services are not a live AWS deployment. For public hosting, use HTTPS provided by the host, a managed PostgreSQL database, private environment variables, a unique admin password, and MFA for the admin account.
 
@@ -34,7 +34,7 @@ python -m pytest -q
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-API docs: http://127.0.0.1:8000/docs
+API docs: http://127.0.0.1:8000/docs  
 Health: http://127.0.0.1:8000/health
 
 ## Free public hosting option: Render + Supabase
@@ -56,6 +56,9 @@ This project includes `render.yaml` for a Render free web service. Use Supabase 
    - `BOOTSTRAP_ADMIN_EMAIL` = your own admin email
    - `BOOTSTRAP_ADMIN_PASSWORD` = a unique strong password known only to you
    - `AWS_DEFAULT_REGION` = `us-east-1`
+   - `PUBLIC_BASE_URL` = your public Render URL (for example `https://cloudauth-demo.onrender.com`)
+   - `RESEND_API_KEY` = an API key from Resend, used to email password-reset links
+   - `RESEND_FROM_EMAIL` = a sender identity verified in Resend, for example `CloudAuth <noreply@your-verified-domain>`
 5. Generate the key values locally (do not put them in Git or send them in chat):
 
    ```bash
@@ -67,6 +70,15 @@ This project includes `render.yaml` for a Render free web service. Use Supabase 
 6. Deploy. When the service starts for the first time, it creates the single administrator from the private environment variables. It never resets the existing admin's password on later starts and refuses to silently promote a regular account.
 7. Open the public HTTPS URL. Sign in using your admin email/password, immediately enable TOTP MFA with your authenticator app, then log out and test login with the code.
 8. Test from a private/incognito browser: create a normal account and confirm it cannot access `/admin/users` (`403`). Keep the admin credentials private and do not send them to your teacher.
+
+### Password recovery setup
+
+- The login page includes **Forgot password?**. The API endpoints are `POST /auth/password/forgot` and `POST /auth/password/reset`.
+- For public deployment, configure `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `PUBLIC_BASE_URL` in Render's private Environment settings. Render's free web services block outbound SMTP ports, so this integration uses Resend's HTTPS API rather than SMTP.
+- Verify a sender domain in Resend before sending password-reset email to arbitrary users. The sample `onboarding@resend.dev` sender is for Resend's test/sandbox use and is not a replacement for verifying your own sender domain for a public application.
+- A reset link expires after 20 minutes, can be used once, and is stored in the database as a SHA-256 token hash. Requesting a new link invalidates prior links for that account. A successful reset revokes refresh-token sessions and clears the failed-login counter/temporary lockout.
+- The public request endpoint returns the same message whether an email is registered or not. In production, it never returns the raw token in the API response. In local development only, the API response can include a reset URL so the flow can be tested without an email provider.
+- Password reset keeps MFA enabled. The user must still supply their authenticator code at the next login if MFA was previously enabled.
 
 ### Free-hosting caveats
 
@@ -84,5 +96,6 @@ This project includes `render.yaml` for a Render free web service. Use Supabase 
 - A hosted deployment fails startup if production secrets, database URL or bootstrap credentials are missing.
 - Admin credentials must be unique, private and protected with MFA after first login.
 - Passwords use Argon2; refresh tokens are stored as hashes; JWT access tokens expire after 15 minutes.
+- Password-reset tokens are random, time-limited, single-use, stored as hashes, and never returned by the public production API.
 - `AUTH_ENCRYPTION_KEY` remains stable across host restarts so encrypted MFA secrets remain decryptable. The Moto KMS resource is tested separately as a simulated cloud-integration demonstration; it is not the persistent key store for hosted MFA records.
 - Real AWS Secrets Manager/KMS/CloudWatch/S3 integration, production-grade centralized rate limiting, access-token denylisting, recovery codes, backups and a formal security review remain future work.

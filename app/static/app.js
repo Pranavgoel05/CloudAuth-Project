@@ -8,8 +8,14 @@
     user: null,
     view: 'overview',
     mfaSetup: null,
-    cloudStatus: null
+    cloudStatus: null,
+    resetToken: new URLSearchParams(window.location.hash.slice(1)).get('reset_token') || ''
   };
+  if (state.resetToken) {
+    // Reset tokens are carried in the URL fragment, which browsers don't send to the server.
+    // Remove the fragment from the address bar immediately and keep it only in page memory.
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -74,13 +80,23 @@
   }
 
   function setAuthMode(mode) {
-    const login = mode === 'login';
-    $('#login-form').classList.toggle('hidden', !login);
-    $('#register-form').classList.toggle('hidden', login);
-    $('#show-login').classList.toggle('active', login);
-    $('#show-register').classList.toggle('active', !login);
-    $('#auth-title').textContent = login ? 'Welcome back' : 'Create your account';
-    $('#auth-subtitle').textContent = login ? 'Sign in to your security workspace.' : 'Set up a secure account in a few steps.';
+    const titles = {
+      login: ['Welcome back', 'Sign in to your security workspace.'],
+      register: ['Create your account', 'Set up a secure account in a few steps.'],
+      forgot: ['Forgot password?', 'We’ll help you recover access securely.'],
+      reset: ['Choose a new password', 'Use a strong password you have not used before.']
+    };
+    ['login', 'register', 'forgot', 'reset'].forEach((name) => {
+      const id = ({ login: 'login-form', register: 'register-form', forgot: 'forgot-password-form', reset: 'reset-password-form' })[name];
+      $(`#${id}`).classList.toggle('hidden', mode !== name);
+    });
+    const showTabs = mode === 'login' || mode === 'register';
+    $('#auth-tabs').classList.toggle('hidden', !showTabs);
+    $('#forgot-password-action').classList.toggle('hidden', mode !== 'login');
+    $('#show-login').classList.toggle('active', mode === 'login');
+    $('#show-register').classList.toggle('active', mode === 'register');
+    $('#auth-title').textContent = (titles[mode] || titles.login)[0];
+    $('#auth-subtitle').textContent = (titles[mode] || titles.login)[1];
   }
 
   function roleLabel(role) {
@@ -317,6 +333,18 @@
 
   $('#show-login').addEventListener('click', () => setAuthMode('login'));
   $('#show-register').addEventListener('click', () => setAuthMode('register'));
+  $('#forgot-password-link').addEventListener('click', () => {
+    $('#forgot-email').value = $('#login-email').value.trim();
+    $('#reset-dev-link').classList.add('hidden');
+    setAuthMode('forgot');
+  });
+  $('#back-to-login-from-forgot').addEventListener('click', () => setAuthMode('login'));
+  $('#back-to-login-from-reset').addEventListener('click', () => {
+    state.resetToken = '';
+    $('#reset-password-form').reset();
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setAuthMode('login');
+  });
   $('#login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -338,6 +366,55 @@
     try { await handleRegister(payload); event.currentTarget.reset(); }
     catch (error) { toast(error.message, 'error'); }
     finally { button.disabled = false; }
+  });
+  $('#forgot-password-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const devLink = $('#reset-dev-link');
+    devLink.classList.add('hidden');
+    button.disabled = true;
+    try {
+      const result = await api('/auth/password/forgot', {
+        method: 'POST', body: JSON.stringify({ email: form.get('email').trim() })
+      }, false);
+      toast(result.message || 'If an account matches that email, reset instructions will be sent.', 'success');
+      // API exposes a reset URL only in local development; production sends email instead.
+      if (result.reset_url) {
+        const link = document.createElement('a');
+        link.href = result.reset_url;
+        link.textContent = 'Open local development reset link';
+        link.rel = 'noreferrer';
+        devLink.replaceChildren(document.createTextNode('Development only: '), link);
+        devLink.classList.remove('hidden');
+      }
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally { button.disabled = false; }
+  });
+  $('#reset-password-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const newPassword = form.get('new_password');
+    if (newPassword !== form.get('confirm_password')) {
+      toast('The passwords do not match.', 'error');
+      return;
+    }
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const result = await api('/auth/password/reset', {
+        method: 'POST',
+        body: JSON.stringify({ token: form.get('token') || state.resetToken, new_password: newPassword })
+      }, false);
+      state.resetToken = '';
+      event.currentTarget.reset();
+      clearSession();
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      toast(result.message || 'Password reset. Sign in with your new password.', 'success');
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally { button.disabled = false; }
   });
   $$('.nav-item[data-view]').forEach((button) => button.addEventListener('click', () => showPage(button.dataset.view)));
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => showPage(button.dataset.go)));
@@ -367,6 +444,11 @@
   rotateButton.style.width = '100%';
 
   async function boot() {
+    if (state.resetToken) {
+      $('#reset-password-token').value = state.resetToken;
+      setAuthMode('reset');
+      return;
+    }
     try {
       const health = await api('/health', {}, false);
       const badge = $('.env-chip');
