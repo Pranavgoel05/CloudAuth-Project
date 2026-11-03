@@ -111,10 +111,8 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
                 send_password_reset_email(email, reset_url)
                 record_event(db, event="password_reset_email_sent", email=email,
                              ip=_request_ip(request), success=True)
-            except Exception as exc:
-                # EmailDeliveryError exposes only a sanitized provider status/message.
-                # Never log the recipient, API key, reset token, or reset URL here.
-                logger.error("Password reset email delivery failed: %s", str(exc)[:320])
+            except Exception:
+                logger.warning("Password reset email delivery failed; check Resend configuration.")
                 record_event(db, event="password_reset_email_failed", email=email,
                              ip=_request_ip(request), success=False)
         elif not is_production:
@@ -192,15 +190,28 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     user = db.scalar(select(User).where(User.email == email))
     now = utcnow_naive()
     if user and user.locked_until and user.locked_until > now:
-        record_event(db, event="login_blocked_locked_account", email=email, ip=_request_ip(request), success=False)
+        record_event(
+            db, event="login_blocked_locked_account", email=email, ip=_request_ip(request),
+            success=False, details="Login attempt denied while the account is temporarily locked.",
+        )
         raise HTTPException(status_code=423, detail="Account temporarily locked after repeated failed attempts")
     if user is None or not verify_password(payload.password, user.password_hash):
+        lockout_started = False
         if user is not None:
             user.failed_attempts += 1
             if user.failed_attempts >= LOCKOUT_THRESHOLD:
                 user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
+                lockout_started = True
             db.commit()
-        record_event(db, event="login_failed", email=email, ip=_request_ip(request), success=False)
+        record_event(db, event="login_failed", email=email, ip=_request_ip(request), success=False,
+                     details="Access denied: invalid credentials.")
+        if lockout_started:
+            record_event(
+                db, event="account_temporarily_blocked", email=email, ip=_request_ip(request),
+                success=False,
+                details=f"Account temporarily blocked for {LOCKOUT_MINUTES} minutes after "
+                        f"{LOCKOUT_THRESHOLD} failed login attempts.",
+            )
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         record_event(db, event="login_inactive_account", email=email, ip=_request_ip(request), success=False)
@@ -216,10 +227,20 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             valid = False
         if not valid:
             user.failed_attempts += 1
+            lockout_started = False
             if user.failed_attempts >= LOCKOUT_THRESHOLD:
                 user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
+                lockout_started = True
             db.commit()
-            record_event(db, event="login_mfa_failed", email=email, ip=_request_ip(request), success=False)
+            record_event(db, event="login_mfa_failed", email=email, ip=_request_ip(request),
+                         success=False, details="Access denied: invalid MFA verification.")
+            if lockout_started:
+                record_event(
+                    db, event="account_temporarily_blocked", email=email, ip=_request_ip(request),
+                    success=False,
+                    details=f"Account temporarily blocked for {LOCKOUT_MINUTES} minutes after "
+                            f"{LOCKOUT_THRESHOLD} failed authentication attempts.",
+                )
             raise HTTPException(status_code=401, detail="Invalid email, password, or MFA code")
     user.failed_attempts = 0
     user.locked_until = None

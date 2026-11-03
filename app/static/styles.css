@@ -13,3 +13,6 @@
 .form-description{font-size:11px;color:#7e8ba0;line-height:1.65;margin:0 0 2px}
 .dev-reset-link{font-size:10px;line-height:1.6;background:#f0f7ff;border:1px solid #dceafa;border-radius:7px;padding:10px;color:#526780;overflow-wrap:anywhere}
 .dev-reset-link a{font-weight:700;overflow-wrap:anywhere}
+
+/* Audit log state for temporary account lockouts. */
+.result-warning{color:#a86d16;background:#fff4df;border-radius:4px;padding:4px 6px;font-size:8px;font-weight:800}

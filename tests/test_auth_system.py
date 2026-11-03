@@ -109,8 +109,38 @@ def test_account_lockout_after_five_failed_password_attempts(client):
     for _ in range(5):
         response = login(client, password="WrongPassword!2026")
         assert response.status_code == 401
+    with SessionLocal() as db:
+        labels = [row.event for row in db.scalars(select(AuditLog).order_by(AuditLog.id)).all()]
+        assert labels.count("login_failed") == 5
+        assert "account_temporarily_blocked" in labels
     locked = login(client)
     assert locked.status_code == 423
+    with SessionLocal() as db:
+        labels = [row.event for row in db.scalars(select(AuditLog).order_by(AuditLog.id)).all()]
+        assert "login_blocked_locked_account" in labels
+
+
+def test_admin_audit_api_records_failed_and_temporarily_blocked_logins(client):
+    register(client, "student@example.com")
+    register(client, "admin@example.com")
+    with SessionLocal() as db:
+        db.scalar(select(User).where(User.email == "admin@example.com")).role = "admin"
+        db.commit()
+
+    for _ in range(5):
+        login(client, "student@example.com", "WrongPassword!2026")
+    login(client, "student@example.com")  # attempt while the account is locked
+
+    admin_token = login(client, "admin@example.com").json()["access_token"]
+    response = client.get("/audit/events?limit=50", headers=auth_header(admin_token))
+    assert response.status_code == 200
+    labels = {row["event"] for row in response.json()}
+    assert {"login_failed", "account_temporarily_blocked", "login_blocked_locked_account"}.issubset(labels)
+
+    # The dashboard translates these stable backend event codes into the requested labels.
+    script = client.get("/static/app.js").text
+    assert "login_failed: 'Access Denied'" in script
+    assert "login_blocked_locked_account: 'Temporary Blocked'" in script
 
 
 def test_totp_mfa_enrollment_and_enforced_login(client):

@@ -256,7 +256,20 @@
         target.innerHTML = '<div class="empty-state">No audit events yet. Register or sign in to generate events.</div>';
         return;
       }
-      target.innerHTML = `<table class="data-table"><thead><tr><th>TIME</th><th>EVENT</th><th>ACCOUNT</th><th>RESULT</th><th>IP ADDRESS</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(formatDate(row.at))}</td><td class="mono">${escapeHtml(row.event)}</td><td>${escapeHtml(row.email)}</td><td><span class="${row.success ? 'result-success' : 'result-fail'}">${row.success ? 'SUCCESS' : 'BLOCKED'}</span></td><td class="mono">${escapeHtml(row.ip)}</td></tr>`).join('')}</tbody></table>`;
+      const eventLabels = {
+        login_failed: 'Access Denied',
+        login_mfa_failed: 'Access Denied',
+        login_inactive_account: 'Access Denied',
+        login_blocked_locked_account: 'Temporary Blocked',
+        account_temporarily_blocked: 'Temporary Blocked'
+      };
+      target.innerHTML = `<table class="data-table"><thead><tr><th>TIME</th><th>EVENT</th><th>ACCOUNT</th><th>RESULT</th><th>IP ADDRESS</th></tr></thead><tbody>${rows.map((row) => {
+        const isTemporaryBlock = ['login_blocked_locked_account', 'account_temporarily_blocked'].includes(row.event);
+        const isAccessDenied = ['login_failed', 'login_mfa_failed', 'login_inactive_account'].includes(row.event);
+        const eventLabel = eventLabels[row.event] || row.event;
+        const resultLabel = row.success ? 'SUCCESS' : (isTemporaryBlock ? 'TEMPORARY BLOCKED' : (isAccessDenied ? 'ACCESS DENIED' : 'BLOCKED'));
+        return `<tr><td>${escapeHtml(formatDate(row.at))}</td><td class="mono">${escapeHtml(eventLabel)}</td><td>${escapeHtml(row.email)}</td><td><span class="${row.success ? 'result-success' : (isTemporaryBlock ? 'result-warning' : 'result-fail')}">${resultLabel}</span></td><td class="mono">${escapeHtml(row.ip)}</td></tr>`;
+      }).join('')}</tbody></table>`;
     } catch (error) {
       target.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
       if (error.status === 401) clearSession();
