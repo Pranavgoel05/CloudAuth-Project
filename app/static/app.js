@@ -320,9 +320,27 @@
 
   function formatDate(value) {
     if (!value) return '—';
-    const date = new Date(value);
+
+    // Database timestamps are stored as UTC-naive values. If the API returns
+    // an ISO timestamp without a timezone suffix, explicitly treat it as UTC
+    // before converting it to India Standard Time for display.
+    let timestamp = String(value).trim();
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(timestamp);
+    if (!hasTimezone) timestamp += 'Z';
+
+    const date = new Date(timestamp);
     if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    const formatted = date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${formatted} IST`;
   }
 
   async function refreshSession() {
