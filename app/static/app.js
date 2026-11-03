@@ -268,7 +268,12 @@
         const isAccessDenied = ['login_failed', 'login_mfa_failed', 'login_inactive_account'].includes(row.event);
         const eventLabel = eventLabels[row.event] || row.event;
         const resultLabel = row.success ? 'SUCCESS' : (isTemporaryBlock ? 'TEMPORARY BLOCKED' : (isAccessDenied ? 'ACCESS DENIED' : 'BLOCKED'));
-        return `<tr><td>${escapeHtml(formatDate(row.at))}</td><td class="mono">${escapeHtml(eventLabel)}</td><td>${escapeHtml(row.email)}</td><td><span class="${row.success ? 'result-success' : (isTemporaryBlock ? 'result-warning' : 'result-fail')}">${resultLabel}</span></td><td class="mono">${escapeHtml(row.ip)}</td></tr>`;
+        const resultClass = row.success
+          ? 'result-success'
+          : (isTemporaryBlock
+              ? 'result-temporary-blocked'
+              : (isAccessDenied ? 'result-access-denied' : 'result-fail'));
+        return `<tr><td>${escapeHtml(formatDate(row.at))}</td><td class="mono">${escapeHtml(eventLabel)}</td><td>${escapeHtml(row.email)}</td><td><span class="${resultClass}">${resultLabel}</span></td><td class="mono">${escapeHtml(row.ip)}</td></tr>`;
       }).join('')}</tbody></table>`;
     } catch (error) {
       target.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
