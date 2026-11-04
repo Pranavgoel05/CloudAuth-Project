@@ -4,6 +4,14 @@ A final-year cybersecurity project demonstrating a Python authentication API, br
 
 > **Project status:** Academic prototype, not a production identity provider. Use demo accounts and non-sensitive data only. The current AWS KMS, Secrets Manager, IAM, CloudWatch Logs, and S3 integrations are simulated with Moto; they are not live AWS resources.
 
+## 🎥 Project Demo
+
+Watch the CloudAuth application demo:
+
+[▶ Watch CloudAuth Demo Video](demo/CloudAuth-Demo.mp4)
+
+See the application workflow and key security features in action.
+
 ## Features
 
 - User registration with password-policy validation and Argon2 password hashing.
